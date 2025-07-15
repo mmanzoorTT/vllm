@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
 
 logger = init_logger(__name__)
+# [TT-TORCH] To enable debugging/logging in the compiled models
+torch._dynamo.config.ignore_logger_methods = {"info", "debug", "warning"}
 
 # Here we utilize the behavior that out-of-bound index is ignored.
 # FIXME(woosuk): Find a more reliable way to prevent possible bugs.
@@ -156,10 +158,12 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         model = model.eval()
         xm.wait_device_ops()
         model = ModelWrapper(model)
-        self.model = torch.compile(model,
-                                   backend="openxla",
-                                   fullgraph=True,
-                                   dynamic=False)
+        # self.model = torch.compile(model,
+        #                           # backend="openxla",
+        #                           backend="tt",
+        #                           fullgraph=True,
+        #                           dynamic=False)
+        self.model = torch.compile(model.to(xm.xla_device()), backend="tt")
 
     def get_model(self) -> nn.Module:
         return self.model.model
@@ -259,21 +263,22 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         # be re-compiled for every different shapes. This overhead is inevitable
         # in the first run, but can be skipped afterwards as we cache the XLA
         # graphs in the disk (VLLM_XLA_CACHE_PATH).
-        if exec_mode.is_prefill():
+        # [TT-TORCH] tt-torch/tt-mlir does not support dynamic shapes.
+        # if exec_mode.is_prefill():
             # Prefll
-            torch._dynamo.mark_dynamic(token_ids, 1)
-            torch._dynamo.mark_dynamic(position_ids, 1)
-            torch._dynamo.mark_dynamic(attn_metadata.slot_mapping, 1)
-        else:
+            # torch._dynamo.mark_dynamic(token_ids, 1)
+            # torch._dynamo.mark_dynamic(position_ids, 1)
+            # torch._dynamo.mark_dynamic(attn_metadata.slot_mapping, 1)
+        # else:
             # Decode
-            torch._dynamo.mark_dynamic(token_ids, 0)
-            torch._dynamo.mark_dynamic(position_ids, 0)
-            torch._dynamo.mark_dynamic(input_lens, 0)
-            torch._dynamo.mark_dynamic(attn_metadata.slot_mapping, 0)
-            torch._dynamo.mark_dynamic(attn_metadata.context_lens, 0)
-            torch._dynamo.mark_dynamic(attn_metadata.block_tables, 0)
-            torch._dynamo.mark_dynamic(t, 0)
-            torch._dynamo.mark_dynamic(p, 0)
+            # torch._dynamo.mark_dynamic(token_ids, 0)
+            # torch._dynamo.mark_dynamic(position_ids, 0)
+            # torch._dynamo.mark_dynamic(input_lens, 0)
+            # torch._dynamo.mark_dynamic(attn_metadata.slot_mapping, 0)
+            # torch._dynamo.mark_dynamic(attn_metadata.context_lens, 0)
+            # torch._dynamo.mark_dynamic(attn_metadata.block_tables, 0)
+            # torch._dynamo.mark_dynamic(t, 0)
+            # torch._dynamo.mark_dynamic(p, 0)
         # Dummy run.
         with set_forward_context(attn_metadata, self.vllm_config, 0):
             self.model(token_ids, position_ids, input_lens, t, p, num_samples,
@@ -813,7 +818,8 @@ class ModelWrapper(nn.Module):
         )
 
         # Skip this in memory profiling at initialization.
-        if kv_caches[0][0].numel() > 0:
+        if kv_caches[0][0].numel() > 0 and len(kv_caches[0][0].shape) > 1:
+        # if kv_caches[0][0].numel() > 0:
             # index_copy_(slot_mapping) only works when the inserted dimension
             # is 0. However, the KV cache in the Pallas backend has the shape
             # [num_kv_heads, num_blocks, block_size, head_size]. To make it
@@ -839,7 +845,15 @@ class ModelWrapper(nn.Module):
 
         # Argmax sampling.
         argmax_token_ids = torch.argmax(logits, dim=-1, keepdim=True)
-        argmax_token_ids = argmax_token_ids.repeat(1, num_samples)
+        # [TT-TORCH] tt-metal does not support concatenate op for more than ~50
+        # tensors. The original op repeats the tensor 128 times (num_samples)
+        # Decomposing it to smaller repeat/concat ops.
+        if num_samples > 50:
+            repeat_arg1 = argmax_token_ids.repeat(1, 50)
+            repeat_arg2 = argmax_token_ids.repeat(1, 28)
+            argmax_token_ids = torch.concat([repeat_arg1, repeat_arg1, repeat_arg2], dim=1)
+        else:
+            argmax_token_ids = argmax_token_ids.repeat(1, num_samples)
 
         # Zero temperature means greedy decoding. Avoid division by zero.
         nonzero_t = torch.where(t != 0, t, 1.0)
@@ -849,14 +863,17 @@ class ModelWrapper(nn.Module):
 
         # Random sampling.
         probs = torch.softmax(logits, dim=-1, dtype=torch.float32)
-        sampled_token_ids = torch.multinomial(probs,
-                                              num_samples,
-                                              replacement=True)
+        # [TT-TORCH] torch.multinomial requires stablehlo.rng_bit_generator which is not supported.
+        #sampled_token_ids = torch.multinomial(probs,
+         #                                     num_samples,
+          #                                    replacement=True)
+        sampled_token_ids = torch.ones((argmax_token_ids.shape), dtype=torch.int64, device=xm.xla_device())
         if num_samples == 1:
             argmax_token_ids = argmax_token_ids.squeeze(dim=-1)
             sampled_token_ids = sampled_token_ids.squeeze(dim=-1)
         next_token_ids = torch.where(t != 0, sampled_token_ids,
                                      argmax_token_ids)
+        logger.info(f"next_token_ids: {next_token_ids}")
         return next_token_ids
 
 

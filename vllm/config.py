@@ -2418,6 +2418,8 @@ class DeviceConfig:
             self.device = torch.device("cpu")
         elif self.device_type in ["tpu"]:
             self.device = None
+        elif self.device_type in ["tt"]:
+            self.device = torch.device("cpu")
         else:
             # Set device with device type
             self.device = torch.device(self.device_type)

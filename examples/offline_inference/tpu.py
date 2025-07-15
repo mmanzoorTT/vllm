@@ -28,7 +28,7 @@ def main():
 
     llm_args = {
         "model": "Qwen/Qwen2-1.5B-Instruct",
-        "max_num_batched_tokens": 64,
+        "max_num_batched_tokens": 128,
         "max_num_seqs": 4,
         "max_model_len": 128,
     }
@@ -50,6 +50,7 @@ def main():
         prompt = output.prompt
         generated_text = output.outputs[0].text
         print(f"Prompt: {prompt!r}\nGenerated text: {generated_text!r}")
+        print(f"Answer: {answer}")
         assert generated_text.startswith(answer)
         print("-" * 50)
 

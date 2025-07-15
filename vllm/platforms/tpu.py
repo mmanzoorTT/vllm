@@ -28,8 +28,8 @@ logger = init_logger(__name__)
 
 class TpuPlatform(Platform):
     _enum = PlatformEnum.TPU
-    device_name: str = "tpu"
-    device_type: str = "tpu"
+    device_name: str = "tt"
+    device_type: str = "tt"
     dispatch_key: str = "XLA"
     ray_device_key: str = "TPU"
     device_control_env_var: str = "TPU_VISIBLE_CHIPS"
@@ -59,8 +59,9 @@ class TpuPlatform(Platform):
 
     @classmethod
     def get_device_name(cls, device_id: int = 0) -> str:
-        chip_type, _ = device.get_local_chips()
-        return f"TPU {chip_type.name}"
+        # chip_type, _ = device.get_local_chips()
+        # return f"TPU {chip_type.name}"
+        return cls.device_name
 
     @classmethod
     def get_device_total_memory(cls, device_id: int = 0) -> int:

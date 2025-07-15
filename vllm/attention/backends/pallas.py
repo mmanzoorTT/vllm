@@ -15,7 +15,8 @@ from vllm.attention.backends.utils import CommonAttentionState
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)
-
+# [TT-TORCH] To enable debugging/logging in the compiled models
+torch._dynamo.config.ignore_logger_methods = {"info", "debug", "warning"}
 
 class PallasAttentionBackend(AttentionBackend):
 
@@ -125,9 +126,9 @@ class PallasAttentionBackendImpl(AttentionImpl):
 
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
         self.logits_soft_cap = logits_soft_cap
-        if head_size % 128 != 0:
-            raise NotImplementedError(
-                f"Head size must be a multiple of 128, found {head_size}.")
+        #if head_size % 128 != 0:
+         #   raise NotImplementedError(
+          #      f"Head size must be a multiple of 128, found {head_size}.")
         if alibi_slopes is not None:
             raise NotImplementedError("Alibi slopes is not supported.")
         if sliding_window is not None:
@@ -137,24 +138,24 @@ class PallasAttentionBackendImpl(AttentionImpl):
         if blocksparse_params is not None:
             raise NotImplementedError("Blocksparse is not supported.")
 
-        if torch_xla.tpu.version() < 4:
-            raise NotImplementedError("TPU version must be 4 or higher.")
+        # if torch_xla.tpu.version() < 4:
+        #    raise NotImplementedError("TPU version must be 4 or higher.")
 
         self.megacore_mode = None
-        tpu_env = torch_xla.tpu.get_tpu_env()
-        tpu_type = (tpu_env.get("ACCELERATOR_TYPE", None)
-                    or tpu_env.get("TYPE", None)
-                    or tpu_env.get("TPU_ACCELERATOR_TYPE", None))
-        assert tpu_type is not None
-        tpu_type = tpu_type.lower()
+        # tpu_env = torch_xla.tpu.get_tpu_env()
+        # tpu_type = (tpu_env.get("ACCELERATOR_TYPE", None)
+        #             or tpu_env.get("TYPE", None)
+        #             or tpu_env.get("TPU_ACCELERATOR_TYPE", None))
+        # assert tpu_type is not None
+        # tpu_type = tpu_type.lower()
 
-        if (("lite" not in tpu_type) and ("v6" not in tpu_type)):
-            if self.num_kv_heads % 2 == 0:
-                self.megacore_mode = "kv_head"
-            else:
-                # NOTE(woosuk): If the batch size is not a multiple of 2, the
-                # megacore mode will be None.
-                self.megacore_mode = "batch"
+        # if (("lite" not in tpu_type) and ("v6" not in tpu_type)):
+        #     if self.num_kv_heads % 2 == 0:
+        #         self.megacore_mode = "kv_head"
+        #     else:
+        #         # NOTE(woosuk): If the batch size is not a multiple of 2, the
+        #         # megacore mode will be None.
+        #         self.megacore_mode = "batch"
 
         if attn_type != AttentionType.DECODER:
             raise NotImplementedError("Encoder self-attention and "
@@ -199,7 +200,8 @@ class PallasAttentionBackendImpl(AttentionImpl):
         value = value.view(batch_size, seq_len, self.num_kv_heads,
                            self.head_size)
 
-        if kv_cache[0].numel() > 0:
+        # [TT-TORCH] tensors are created with dummy data instead of empty.
+        if kv_cache[0].numel() > 0 and len(kv_cache[0].shape) > 1:
             slot_mapping = attn_metadata.slot_mapping
             key_cache, value_cache = kv_cache
             write_to_kv_cache(key, value, key_cache, value_cache, slot_mapping)
@@ -226,11 +228,12 @@ class PallasAttentionBackendImpl(AttentionImpl):
                 # [batch_size, num_heads, seq_len, d_model]
                 # while the input is [batch_size, seq_len, num_heads, d_model].
                 # Permute the input to match the required format.
-                output = torch.ops.xla.flash_attention(
+                #output = torch.ops.xla.flash_attention(
+                output = torch.nn.functional.scaled_dot_product_attention(
                     query.permute(0, 2, 1, 3),
                     key.permute(0, 2, 1, 3),
                     value.permute(0, 2, 1, 3),
-                    True,
+                    is_causal=True,
                 )
                 output = output.permute(0, 2, 1, 3)
             else:
@@ -255,7 +258,7 @@ class PallasAttentionBackendImpl(AttentionImpl):
             # Decoding run.
             assert kv_cache[0].numel() > 0
             query = query.squeeze(dim=1)
-            pages_per_compute_block = 16  # TODO(woosuk): Tune this value.
+            pages_per_compute_block = 8  # TODO(woosuk): Tune this value.
 
             assert attn_metadata.block_tables is not None
             assert attn_metadata.context_lens is not None
@@ -269,17 +272,25 @@ class PallasAttentionBackendImpl(AttentionImpl):
             max_num_seq = MAX_SMEM_USAGE // size_per_seq
 
             if batch_size <= max_num_seq:
-                output = paged_attention(
-                    query,
-                    key_cache,
-                    value_cache,
-                    attn_metadata.context_lens,
-                    attn_metadata.block_tables,
-                    pages_per_compute_block,
-                    self.megacore_mode,
-                    attn_logits_soft_cap=self.logits_soft_cap,
+                # output = paged_attention(
+                #     query,
+                #     key_cache,
+                #     value_cache,
+                #     attn_metadata.context_lens,
+                #     attn_metadata.block_tables,
+                #     pages_per_compute_block,
+                #     self.megacore_mode,
+                #     attn_logits_soft_cap=self.logits_soft_cap,
+                # )
+                output = torch.nn.functional.scaled_dot_product_attention(
+                    query.unsqueeze(2),  # [B, H, 1, D]
+                    key,
+                    value,
+                    is_causal=True
                 )
+                output = output.squeeze(2)  # [B, H, D]
             else:
+                logger.info("unsupported attention decoder")
                 chunk_size = max_num_seq
                 # Make sure the chunk size is a multiple of 2.
                 chunk_size = chunk_size // 2 * 2

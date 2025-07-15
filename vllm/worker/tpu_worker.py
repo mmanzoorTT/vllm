@@ -21,6 +21,7 @@ from vllm.worker.tpu_model_runner import ExecutionMode, TPUModelRunner
 from vllm.worker.worker_base import (LocalOrDistributedWorkerBase,
                                      LoRANotSupportedWorkerBase, WorkerBase,
                                      WorkerInput)
+from tt_torch.dynamo.backend import backend
 
 logger = init_logger(__name__)
 
@@ -42,7 +43,7 @@ class TPUWorker(LoRANotSupportedWorkerBase, LocalOrDistributedWorkerBase):
         self.distributed_init_method = distributed_init_method
         self.is_driver_worker = is_driver_worker
 
-        assert self.device_config.device_type == "tpu"
+        assert self.device_config.device_type == "tt"
         if self.cache_config.cache_dtype == "auto":
             self.cache_dtype = self.model_config.dtype
         else:
@@ -60,7 +61,9 @@ class TPUWorker(LoRANotSupportedWorkerBase, LocalOrDistributedWorkerBase):
                 "The V0 TPU backend doesn't support LoRA serving")
 
     def init_device(self) -> None:
-        os.environ["PJRT_DEVICE"] = "TPU"
+        # os.environ["PJRT_DEVICE"] = "TPU"
+        # os.environ["PJRT_DEVICE"] = "CPU"
+        os.environ["PJRT_DEVICE"] = "TT"
         torch.set_grad_enabled(False)
         torch.set_default_dtype(self.model_config.dtype)
 
@@ -142,9 +145,10 @@ class TPUWorker(LoRANotSupportedWorkerBase, LocalOrDistributedWorkerBase):
         # it by reference, rather by specializing on the value ``None``.
         # the `dtype` argument does not matter, and we use `float32` as
         # a placeholder (it has wide hardware support).
-        kv_caches = [(torch.tensor([], dtype=torch.float32,
+        # [TT-TORCH] tt-mlir runtime does not allow to create empty tensor
+        kv_caches = [(torch.tensor([3.14], dtype=torch.float32,
                                    device=self.device),
-                      torch.tensor([], dtype=torch.float32,
+                      torch.tensor([3.14], dtype=torch.float32,
                                    device=self.device))
                      for _ in range(num_layers)]
         bind_kv_cache(self.compilation_config.static_forward_context,
@@ -160,9 +164,13 @@ class TPUWorker(LoRANotSupportedWorkerBase, LocalOrDistributedWorkerBase):
 
         # Get the maximum amount of memory used by the model weights and
         # intermediate activations.
-        m = xm.get_memory_info(self.device)
-        total_memory_size = m["bytes_limit"]
-        profiled = m["peak_bytes_used"]  # Weights + intermediate activations.
+        # [TT-TORCH] tt-xla does not an implementation of 'get_memory_info(...)'
+        # m = xm.get_memory_info(self.device)
+        # total_memory_size = m["bytes_limit"]
+        # profiled = m["peak_bytes_used"]  # Weights + intermediate activations.
+        # [TT-TORCH] Using hard corded stats.
+        total_memory_size = 2000000000
+        profiled = 100000000
 
         # Calculate the TPU KV cache size based on profiling.
         usable_memory_size = int(total_memory_size *

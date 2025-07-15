@@ -174,8 +174,11 @@ class Attention(nn.Module):
         # use a placeholder kv cache tensor during init, which will be replaced
         # by bind_kv_cache
         # this variable will not be accessed if use_direct_call is True
+        # [TT-TORCH] torch.tensor([]) -> torch.tensor([0.0])
+        # Reason: tt-mlir runtime does not allow to create tensor with no data.
+        # (runtime.cpp::141) LOG_ASSERT(data != nullptr, "Cannot create borrowed tensor with null data");
         self.kv_cache = [
-            torch.tensor([]) for _ in range(get_current_vllm_config(
+            torch.tensor([0.0]) for _ in range(get_current_vllm_config(
             ).parallel_config.pipeline_parallel_size)
         ]
 
