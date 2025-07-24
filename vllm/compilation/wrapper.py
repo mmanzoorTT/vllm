@@ -49,7 +49,7 @@ class TorchCompileWrapperWithCustomDispatcher:
             compiled_callable = torch.compile(
                 self.forward,
                 fullgraph=envs.VLLM_TEST_DYNAMO_FULLGRAPH_CAPTURE,
-                backend=backend,
+                backend="tt-experimental",
                 options=options)
 
         self.compiled_callable = compiled_callable

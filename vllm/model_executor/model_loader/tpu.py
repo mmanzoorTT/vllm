@@ -79,10 +79,10 @@ class TPUModelLoader(DefaultModelLoader):
         # Need to torch compile after model sharding are done. Because the
         # compiler hints ('xs.mark_sharding') are torch ops.
         if not model_config.is_multimodal_model:
-            model.model = torch.compile(model.model, backend="openxla")
+            model.model = torch.compile(model.model, backend="tt-experimental")
         else:
             model.language_model.model = \
-                torch.compile(model.language_model.model, backend="openxla")
+                torch.compile(model.language_model.model, backend="tt-experimental")
         return model
 
     def _check_model_is_loaded(self, mesh: Optional[xs.Mesh],

@@ -13,6 +13,8 @@ import torch
 import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch_xla.runtime as xr
+from tt_torch.dynamo.backend import backend, BackendOptions
+from tt_torch.tools.utils import CompilerConfig
 
 from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.config import VllmConfig
@@ -163,7 +165,18 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         #                           backend="tt",
         #                           fullgraph=True,
         #                           dynamic=False)
-        self.model = torch.compile(model.to(xm.xla_device()), backend="tt")
+        # Setting compiler config options to not move outputs back to cpu.
+        cc = CompilerConfig()
+        cc.push_outputs_to_cpu = False
+        options = BackendOptions()
+        options.compiler_config = cc
+
+        self.model = torch.compile(
+            model.to(xm.xla_device()),
+            backend="tt-experimental",
+            dynamic=False,
+            options=options
+        )
 
     def get_model(self) -> nn.Module:
         return self.model.model
@@ -845,15 +858,7 @@ class ModelWrapper(nn.Module):
 
         # Argmax sampling.
         argmax_token_ids = torch.argmax(logits, dim=-1, keepdim=True)
-        # [TT-TORCH] tt-metal does not support concatenate op for more than ~50
-        # tensors. The original op repeats the tensor 128 times (num_samples)
-        # Decomposing it to smaller repeat/concat ops.
-        if num_samples > 50:
-            repeat_arg1 = argmax_token_ids.repeat(1, 50)
-            repeat_arg2 = argmax_token_ids.repeat(1, 28)
-            argmax_token_ids = torch.concat([repeat_arg1, repeat_arg1, repeat_arg2], dim=1)
-        else:
-            argmax_token_ids = argmax_token_ids.repeat(1, num_samples)
+        argmax_token_ids = argmax_token_ids.repeat(1, num_samples)
 
         # Zero temperature means greedy decoding. Avoid division by zero.
         nonzero_t = torch.where(t != 0, t, 1.0)
