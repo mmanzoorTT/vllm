@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch_xla.runtime as xr
 from tt_torch.dynamo.backend import backend, BackendOptions
-from tt_torch.tools.utils import CompilerConfig
+from tt_torch.tools.utils import CompilerConfig, CompileDepth, OpByOpBackend
 
 from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.config import VllmConfig
@@ -168,11 +168,15 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         # Setting compiler config options to not move outputs back to cpu.
         cc = CompilerConfig()
         cc.push_outputs_to_cpu = False
+        cc.enable_consteval = True
+        cc.consteval_parameters = True
+        # cc.compile_depth = CompileDepth.EXECUTE_OP_BY_OP
         options = BackendOptions()
         options.compiler_config = cc
 
         self.model = torch.compile(
-            model.to(xm.xla_device()),
+            model,
+            # model.to(xm.xla_device()),
             backend="tt-experimental",
             dynamic=False,
             options=options
@@ -293,6 +297,7 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             # torch._dynamo.mark_dynamic(t, 0)
             # torch._dynamo.mark_dynamic(p, 0)
         # Dummy run.
+        self.model = self.model.to(device=self.device)
         with set_forward_context(attn_metadata, self.vllm_config, 0):
             self.model(token_ids, position_ids, input_lens, t, p, num_samples,
                        kv_caches)

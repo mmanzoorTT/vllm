@@ -24,6 +24,8 @@ else:
     PoolingParams = None
 
 logger = init_logger(__name__)
+from tt_torch.dynamo.backend import backend, BackendOptions
+from tt_torch.tools.utils import CompilerConfig, CompileDepth, OpByOpBackend
 
 
 class TpuPlatform(Platform):
@@ -33,7 +35,7 @@ class TpuPlatform(Platform):
     dispatch_key: str = "XLA"
     ray_device_key: str = "TPU"
     device_control_env_var: str = "TPU_VISIBLE_CHIPS"
-    simple_compile_backend: str = "openxla"
+    simple_compile_backend: str = "tt-experimental"
 
     supported_quantization: list[str] = ["tpu_int8", "compressed-tensors"]
 
@@ -107,7 +109,8 @@ class TpuPlatform(Platform):
             compilation_config.level = CompilationLevel.DYNAMO_ONCE
 
         if compilation_config.backend == "":
-            compilation_config.backend = "openxla"
+            logger.info("setting to tt-experimental backend.")
+            compilation_config.backend = "tt-experimental"
 
         assert vllm_config.speculative_config is None, \
             "TPU does not support speculative decoding"

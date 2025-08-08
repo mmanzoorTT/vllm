@@ -9,6 +9,9 @@ from vllm.config import LoadConfig, ModelConfig, VllmConfig
 from vllm.model_executor.model_loader.utils import (
     initialize_model, process_weights_after_loading, set_default_torch_dtype)
 
+from tt_torch.dynamo.backend import backend, BackendOptions
+from tt_torch.tools.utils import CompilerConfig, CompileDepth, OpByOpBackend
+import torch_xla.core.xla_model as xm
 
 class BaseModelLoader(ABC):
     """Base class for model loaders."""
@@ -34,9 +37,25 @@ class BaseModelLoader(ABC):
         device_config = vllm_config.device_config
         target_device = torch.device(device_config.device)
         with set_default_torch_dtype(model_config.dtype):
-            with target_device:
-                model = initialize_model(vllm_config=vllm_config,
+            # Compiling the model for loading weights.
+            model = initialize_model(vllm_config=vllm_config,
                                          model_config=model_config)
+            cc = CompilerConfig()
+            cc.push_outputs_to_cpu = False
+            cc.enable_consteval = True
+            cc.consteval_parameters = True
+            # cc.compile_depth = CompileDepth.EXECUTE_OP_BY_OP
+            options = BackendOptions()
+            options.compiler_config = cc
+
+            model = torch.compile(
+                model,
+                # model.to(xm.xla_device()),
+                backend="tt-experimental",
+                dynamic=False,
+                options=options
+            )
+
             # Quantization does not happen in `load_weights` but after it
             self.load_weights(model, model_config)
             process_weights_after_loading(model, model_config, target_device)

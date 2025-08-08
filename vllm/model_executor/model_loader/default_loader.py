@@ -276,7 +276,15 @@ class DefaultModelLoader(BaseModelLoader):
         # We only enable strict check for non-quantized models
         # that have loaded weights tracking currently.
         if model_config.quantization is None and loaded_weights is not None:
-            weights_not_loaded = weights_to_load - loaded_weights
+            compiled_weights_to_load: set[str] = set()
+            # PyTorch compilation modifies the names of named_parameters.
+            # Cleanup the names.
+            for name in weights_to_load:
+                compiled_name = name.replace("_orig_mod.", "")
+                compiled_weights_to_load.add(compiled_name)
+
+            weights_not_loaded = compiled_weights_to_load - loaded_weights
+
             if weights_not_loaded:
                 raise ValueError("Following weights were not initialized from "
                                  f"checkpoint: {weights_not_loaded}")
