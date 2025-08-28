@@ -37,6 +37,8 @@ from vllm.platforms import current_platform
 
 if current_platform.is_cuda():
     from vllm.vllm_flash_attn.layers.rotary import apply_rotary_emb
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 
 def _rotate_neox(x: torch.Tensor) -> torch.Tensor:
@@ -149,6 +151,10 @@ class RotaryEmbedding(CustomOp):
             positions = positions + offsets
         positions = positions.flatten()
         num_tokens = positions.shape[0]
+        logger.info(f"positions: {positions.device}")
+        logger.info(f"self.cose_sin_cache: {self.cos_sin_cache}")
+        logger.info(f"self.cose_sin_cache: {self.cos_sin_cache.device}")
+        self.cos_sin_cache = self.cos_sin_cache.to("xla")
         cos_sin = self.cos_sin_cache.index_select(0, positions)
         cos, sin = cos_sin.chunk(2, dim=-1)
 

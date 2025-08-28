@@ -17,6 +17,8 @@ from vllm.sequence import PoolerOutput, PoolingSequenceGroupOutput
 from vllm.transformers_utils.config import (
     get_cross_encoder_activation_function)
 from vllm.v1.pool.metadata import PoolingMetadata as V1PoolingMetadata
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 PoolingMetadata = Union[V0PoolingMetadata, V1PoolingMetadata]
 
@@ -138,14 +140,37 @@ class LastPool(SimplePooler):
         hidden_states: Union[torch.Tensor, list[torch.Tensor]],
         pooling_metadata: PoolingMetadata,
     ) -> Union[list[torch.Tensor], torch.Tensor]:
+        logger.info(f"pooler::pooling_metadata: {pooling_metadata}")
         if isinstance(hidden_states, list):
+            logger.info("instance of a list")
             return [h[-1] for h in hidden_states]
 
         prompt_lens = self.get_prompt_lens(hidden_states, pooling_metadata)
 
-        last_token_flat_indices = torch.cumsum(prompt_lens, dim=0) - 1
-        return hidden_states[last_token_flat_indices]
+        logger.info(f"pooler::prompt_lens: {prompt_lens}")
+        # last_token_flat_indices = torch.cumsum(prompt_lens, dim=0) - 1
+        last_token_flat_indices = prompt_lens - 1
+        batch_indices = torch.arange(hidden_states.size(0))
+        logger.info(f"pooler::last_token_flat_indices: {last_token_flat_indices}")
+        logger.info(f"output: {hidden_states.shape}")
+        output = hidden_states[batch_indices, last_token_flat_indices]
+        logger.info(f"output: {output.shape}")
+        return output
+    """def extract_states(
+        self,
+        hidden_states: torch.Tensor,
+        pooling_metadata: PoolingMetadata,
+    ) -> Union[list[torch.Tensor], torch.Tensor]:
+        prompt_lens = self.get_prompt_lens(hidden_states, pooling_metadata)
+        logger.info(f"pooler::pooling_metadata: {pooling_metadata}")
+        logger.info(f"pooler::prompt_lens: {prompt_lens}")
 
+        last_token_flat_indices = torch.cumsum(prompt_lens, dim=0) - 1
+        logger.info(f"pooler::last_token_flat_indices: {last_token_flat_indices}")
+        logger.info(f"output: {hidden_states.shape}")
+        output = hidden_states[last_token_flat_indices]
+        logger.info(f"output: {output.shape}")
+        return output"""
 
 class AllPool(SimplePooler):
 
@@ -340,6 +365,9 @@ class Pooler(nn.Module):
         step_tag_id: Optional[int] = None,
         returned_token_ids: Optional[list[int]] = None,
     ) -> SimplePooler:
+        logger.info("pooler.py")
+        logger.info(f"pooler_config: {pooler_config}")
+        logger.info(f"pooler_config.pooling_type: {pooler_config.pooling_type}")
         return SimplePooler.from_pooling_type(
             pooling_type=PoolingType[pooler_config.pooling_type]
             if pooler_config.pooling_type is not None else pooling_type,

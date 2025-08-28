@@ -200,13 +200,22 @@ class PallasAttentionBackendImpl(AttentionImpl):
         value = value.view(batch_size, seq_len, self.num_kv_heads,
                            self.head_size)
 
+        query = query * self.scale
+        if attn_metadata is None:
+            output = torch.nn.functional.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                is_causal=True
+            )
+            return output.reshape(batch_size, seq_len, hidden_size)
+
         # [TT-TORCH] tensors are created with dummy data instead of empty.
         if kv_cache[0].numel() > 0 and len(kv_cache[0].shape) > 1:
             slot_mapping = attn_metadata.slot_mapping
             key_cache, value_cache = kv_cache
             write_to_kv_cache(key, value, key_cache, value_cache, slot_mapping)
 
-        query = query * self.scale
         if attn_metadata.num_prefills > 0:
             if attn_metadata.block_tables is None:
                 # Prefill without paged KV cache.

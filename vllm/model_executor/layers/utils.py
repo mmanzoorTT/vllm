@@ -8,6 +8,8 @@ import torch
 from vllm import _custom_ops as ops
 from vllm import envs
 from vllm.platforms import current_platform
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 
 def get_token_bin_counts_and_mask(

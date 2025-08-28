@@ -1277,9 +1277,11 @@ class LLMEngine:
         # These are cached outputs from previous iterations. None if on first
         # iteration
         cached_outputs = self.cached_scheduler_outputs[virtual_engine]
+        logger.info(f"cached_outputs: {cached_outputs}")
         seq_group_metadata_list = cached_outputs.seq_group_metadata_list
         scheduler_outputs = cached_outputs.scheduler_outputs
         allow_async_output_proc = cached_outputs.allow_async_output_proc
+        logger.info(f"seq_group_metadata_list1: {seq_group_metadata_list}")
 
         ctx = self.scheduler_contexts[virtual_engine]
 
@@ -1328,6 +1330,7 @@ class LLMEngine:
         assert scheduler_outputs is not None
 
         if not scheduler_outputs.is_empty():
+            logger.info("if-condition")
 
             # Check if we have a cached last_output from the previous iteration.
             # For supporting PP this is probably the best way to pass the
@@ -1375,12 +1378,14 @@ class LLMEngine:
             if self.scheduler_config.is_multi_step:
                 self._update_cached_scheduler_output(virtual_engine, outputs)
         else:
+            logger.info("else-condition")
             # Nothing scheduled => If there is pending async postprocessor,
             # then finish it here.
             if len(ctx.output_queue) > 0:
                 self._process_model_outputs(ctx=ctx)
             # No outputs in this case
             outputs = []
+        # sys.exit(0)
 
         # Finish the current step for all the sequence groups.
         if self.scheduler_config.is_multi_step:

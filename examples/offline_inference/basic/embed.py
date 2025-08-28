@@ -12,10 +12,14 @@ def parse_args():
     parser = EngineArgs.add_cli_args(parser)
     # Set example specific arguments
     parser.set_defaults(
-        model="intfloat/e5-mistral-7b-instruct",
+        # model="intfloat/e5-mistral-7b-instruct",
+        model="Qwen/Qwen3-Embedding-4B",
         task="embed",
+        #dtype="bfloat16",
         enforce_eager=True,
-        max_model_len=1024,
+        #max_model_len=1024,
+        # disable_sliding_window=True,
+        #enable_prompt_embeds=True,
     )
     return parser.parse_args()
 

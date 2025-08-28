@@ -9,6 +9,8 @@ import torch.nn as nn
 import vllm.envs as envs
 from vllm.model_executor.custom_op import CustomOp
 from vllm.platforms import current_platform
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 
 def is_rocm_aiter_rmsnorm_enabled() -> bool:
@@ -109,9 +111,9 @@ class RMSNorm(CustomOp):
                                        else var_hidden_size)
         self.has_weight = has_weight
         if dtype is not None:
-            self.weight = torch.ones(hidden_size, dtype=dtype)
+            self.weight = torch.ones(hidden_size, dtype=dtype, device="xla")
         else:
-            self.weight = torch.ones(hidden_size)
+            self.weight = torch.ones(hidden_size, device="xla")
         if self.has_weight:
             self.weight = nn.Parameter(self.weight)
 
@@ -146,6 +148,8 @@ class RMSNorm(CustomOp):
 
         x = x * torch.rsqrt(variance + self.variance_epsilon)
         x = x.to(orig_dtype)
+        logger.info(f"x: {x.device}")
+        logger.info(f"weight: {self.weight.device}")
         if self.has_weight:
             x = x * self.weight
         if residual is None:

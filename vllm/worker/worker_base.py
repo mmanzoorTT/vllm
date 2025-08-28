@@ -334,6 +334,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     ) -> Tuple[BroadcastableModelInput, WorkerInput, Dict[str, torch.Tensor]]:
         """ Get the driver input and broadcast it to other workers.  """
         assert self.is_driver_worker
+        logger.info(f"execute_model_req: {execute_model_req}")
 
         worker_input: WorkerInput = self.prepare_worker_input(
             execute_model_req=execute_model_req)
@@ -366,8 +367,10 @@ class LocalOrDistributedWorkerBase(WorkerBase):
         """
         Prepare the inputs to ModelRunner and workers.
         """
+        logger.info(f"is_driver_worker: {self.is_driver_worker}")
         if self.is_driver_worker:
             if execute_model_req is None:
+                logger.info(f"execute_model_req is None")
                 if self.do_metadata_broadcast:
                     # This signals that there's no more requests to process for
                     # now. All workers are running infinite loop with
@@ -396,7 +399,12 @@ class LocalOrDistributedWorkerBase(WorkerBase):
             return None
 
         model_input, worker_input, kwargs = inputs
-        num_steps = worker_input.num_steps
+
+        if self.scheduler_config.runner_type == "pooling":
+            num_steps = 1
+        else:
+            num_steps = worker_input.num_steps
+
         if execute_model_req is not None and execute_model_req.spec_step_idx:
             kwargs["spec_step_idx"] = execute_model_req.spec_step_idx
 
@@ -417,10 +425,14 @@ class LocalOrDistributedWorkerBase(WorkerBase):
                 orig_model_execute_time = intermediate_tensors.tensors.get(
                     "model_execute_time", torch.tensor(0)).item()
 
+        # Disable kv_cache for embedding task (usually not used)
+        kv_cache = None
+        if self.scheduler_config.runner_type != "pooling" and self.kv_cache is not None:
+            kv_cache = self.kv_cache[worker_input.virtual_engine]
+        
         output = self.model_runner.execute_model(
             model_input=model_input,
-            kv_caches=self.kv_cache[worker_input.virtual_engine]
-            if self.kv_cache is not None else None,
+            kv_caches=kv_cache,
             intermediate_tensors=intermediate_tensors,
             num_steps=num_steps,
             **kwargs,

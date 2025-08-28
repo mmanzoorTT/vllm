@@ -268,6 +268,8 @@ class LLM:
         )
 
         # Create the Engine (autoselects V0 vs V1)
+        # Creates multi processing environment
+        # Loads model weights
         self.llm_engine = LLMEngine.from_engine_args(
             engine_args=engine_args, usage_context=UsageContext.LLM_CLASS)
         self.engine_class = type(self.llm_engine)
@@ -1104,6 +1106,9 @@ class LLM:
                             pooling_params=pooling_params,
                             lora_request=lora_request,
                             prompt_adapter_request=prompt_adapter_request)
+        logger.info(f"prompts: {prompts}")
+        for item in items:
+            logger.info(f"item: {item}")
 
         return [EmbeddingRequestOutput.from_base(item) for item in items]
 
@@ -1563,6 +1568,7 @@ class LLM:
         total_in_toks = 0
         total_out_toks = 0
         while self.llm_engine.has_unfinished_requests():
+            logger.info("_run_engine_loop")
             step_outputs = self.llm_engine.step()
             for output in step_outputs:
                 if output.finished:

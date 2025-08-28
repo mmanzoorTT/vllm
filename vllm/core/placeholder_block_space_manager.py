@@ -6,6 +6,8 @@ from typing import List, Optional, Tuple
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.sequence import Sequence, SequenceGroup
 from vllm.utils import Device
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 
 class PlaceholderBlockSpaceManager(BlockSpaceManager):
@@ -67,6 +69,7 @@ class PlaceholderBlockSpaceManager(BlockSpaceManager):
         return
 
     def get_block_table(self, seq: Sequence) -> List[int]:
+        logger.info("placeholder::get_block_table")
         return None  # type: ignore
 
     def get_num_free_gpu_blocks(self) -> int:

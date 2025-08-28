@@ -56,6 +56,8 @@ from .utils import (AutoWeightsLoader, PPMissingLayer, extract_layer_index,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
 
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 class Qwen2MLP(nn.Module):
 
@@ -340,28 +342,44 @@ class Qwen2Model(nn.Module):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, IntermediateTensors]:
+        logger.info(f"model::Qwen2Model")
+        logger.info(f"model::Qwen2Model::input_ids.shape: {input_ids.shape}")
+        logger.info(f"model::Qwen2Model::positions.shape: {positions.shape}")
+        logger.info(f"model::Qwen2Model::inputs: {input_ids}")
+        logger.info(f"model::Qwen2Model::positions: {positions}")
+        if intermediate_tensors is not None:
+            logger.info(f"model::Qwen2Model::intermediate_tensors.shape: {intermediate_tensors.shape}")
+        if inputs_embeds is not None:
+            logger.info(f"model::Qwen2Model::inputs_embeds.shape: {inputs_embeds.shape}")
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
+                logger.info("hidden_states-1")
                 hidden_states = inputs_embeds
             else:
+                logger.info("hidden_states-2")
                 hidden_states = self.get_input_embeddings(input_ids)
             residual = None
         else:
             assert intermediate_tensors is not None
+            logger.info("hidden_states-3")
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
+        logger.info(f"hidden_states.shape.start: {hidden_states.shape}")
         for layer in self.layers[self.start_layer:self.end_layer]:
             hidden_states, residual = layer(
                 positions,
                 hidden_states,
                 residual,
             )
+            logger.info(f"hidden_states.shape.loop: {hidden_states.shape}")
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
+        logger.info(f"hidden_states.shape.after_loop: {hidden_states.shape}")
         hidden_states, _ = self.norm(hidden_states, residual)
+        logger.info(f"model::Qwen2Model::output.shape: {hidden_states.shape}")
         return hidden_states
 
     def load_weights(self, weights: Iterable[tuple[str,

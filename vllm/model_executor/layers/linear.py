@@ -191,7 +191,7 @@ class UnquantizedLinearMethod(LinearMethodBase):
                        **extra_weight_attrs):
         weight = Parameter(torch.empty(sum(output_partition_sizes),
                                        input_size_per_partition,
-                                       dtype=params_dtype),
+                                       dtype=params_dtype, device="xla"),
                            requires_grad=False)
         set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
         layer.register_parameter("weight", weight)
@@ -223,6 +223,8 @@ class UnquantizedLinearMethod(LinearMethodBase):
               x: torch.Tensor,
               bias: Optional[torch.Tensor] = None) -> torch.Tensor:
 
+        logger.info("linear.apply")
+        logger.info(f"layer.weight: {layer.weight.device}")
         return dispatch_unquantized_gemm()(layer, x, layer.weight, bias)
 
 
@@ -354,6 +356,7 @@ class ReplicatedLinear(LinearBase):
     ) -> Union[torch.Tensor, tuple[torch.Tensor, Optional[Parameter]]]:
         bias = self.bias if not self.skip_bias_add else None
         assert self.quant_method is not None
+        logger.info("ReplicatedLinear")
         output = self.quant_method.apply(self, x, bias)
         output_bias = self.bias if self.skip_bias_add else None
         if not self.return_bias:
@@ -507,6 +510,10 @@ class ColumnParallelLinear(LinearBase):
 
         # Matrix multiply.
         assert self.quant_method is not None
+        logger.info("ColumnParallelLinear")
+        logger.info(f"input_: {input_.device}")
+        logger.info(f"bias: {bias}")
+        logger.info(f"self.quant_method.__class__.__name__: {self.quant_method.__class__.__name__}")
         output_parallel = self.quant_method.apply(self, input_, bias)
         if self.gather_output:
             # All-gather across the partitions.
@@ -1309,6 +1316,7 @@ class RowParallelLinear(LinearBase):
         # Only fuse bias add into GEMM for rank 0 (this ensures that
         # bias will not get added more than once in TP>1 case)
         bias_ = None if (self.tp_rank > 0 or self.skip_bias_add) else self.bias
+        logger.info("RowParallelLinear")
         output_parallel = self.quant_method.apply(self,
                                                   input_parallel,
                                                   bias=bias_)

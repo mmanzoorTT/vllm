@@ -14,6 +14,8 @@ from vllm.core.block.utils import check_no_caching_or_swa_for_blockmgr_encdec
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.sequence import Sequence, SequenceGroup, SequenceStatus
 from vllm.utils import Device
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 SeqId = int
 EncoderSeqId = str
@@ -283,6 +285,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         del self.cross_block_tables[request_id]
 
     def get_block_table(self, seq: Sequence) -> List[int]:
+        logger.info("block_manager::get_block_table")
         block_ids = self.block_tables[seq.seq_id].physical_block_ids
         return block_ids  # type: ignore
 

@@ -4,6 +4,7 @@
 import enum
 import time
 from dataclasses import dataclass
+import dataclasses
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     Type, Union)
 from unittest.mock import patch
@@ -22,6 +23,8 @@ from vllm.forward_context import get_forward_context, set_forward_context
 from vllm.logger import init_logger
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.model_loader import get_model
+from vllm.model_executor.models.interfaces_base import VllmModelForPooling
+from vllm.model_executor.pooling_metadata import PoolingMetadata
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import (CompletionSequenceGroupOutput, IntermediateTensors,
                            Logprob, SequenceGroupMetadata, SequenceOutput)
@@ -102,6 +105,14 @@ class ModelInputForTPU(ModelRunnerInputBase):
         return cls(**tensor_dict)
 
 
+@dataclass(frozen=True)
+class ModelInputForTPUWithPoolingMetadata(ModelInputForTPU):
+    """
+    Used for pooling models.
+    """
+    pooling_metadata: Optional["PoolingMetadata"] = None
+
+
 class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
 
     def __init__(
@@ -159,7 +170,10 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             model = get_model(vllm_config=self.vllm_config)
         model = model.eval()
         xm.wait_device_ops()
-        model = ModelWrapper(model)
+        logger.info(f"runner_type: {self.scheduler_config.runner_type}")
+        logger.info(f"model: {model}")
+        logger.info(f"model.pooler: {model.pooler}")
+        model = ModelWrapper(model, self.scheduler_config.runner_type)
         # self.model = torch.compile(model,
         #                           # backend="openxla",
         #                           backend="tt",
@@ -461,6 +475,42 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         )
         return input_tokens, input_positions, attn_metadata, prompt_lens
 
+    def _prepare_embedding_inputs(
+    self,
+    seq_group_metadata_list: List[SequenceGroupMetadata],
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[AttentionMetadata], torch.Tensor]:
+
+        assert len(seq_group_metadata_list) > 0
+        # Collect input_ids for each sequence group
+        input_ids_list = []
+        prompt_lens = []
+
+        for seq_group_metadata in seq_group_metadata_list:
+            assert seq_group_metadata.is_prompt
+            seq_ids = list(seq_group_metadata.seq_data.keys())
+            assert len(seq_ids) == 1
+            seq_id = seq_ids[0]
+
+            seq_data = seq_group_metadata.seq_data[seq_id]
+            input_ids = seq_data.get_token_ids()
+            input_ids_list.append(input_ids)
+            prompt_lens.append(len(input_ids))
+
+        # Pad to equal lengths (TPU prefers static shape)
+        max_len = max(prompt_lens)
+        padded_input_ids = []
+        for ids in input_ids_list:
+            padded = ids + [0] * (max_len - len(ids))
+            padded_input_ids.append(padded)
+
+        input_tokens = torch.tensor(padded_input_ids, dtype=torch.int32, device="cpu")
+        input_positions = torch.arange(max_len, dtype=torch.int32).unsqueeze(0).expand(len(padded_input_ids), -1).contiguous()
+        prompt_lens = torch.tensor(prompt_lens, dtype=torch.int32, device="cpu")
+
+        # No attention metadata needed for embedding tasks
+        return input_tokens, input_positions, None, prompt_lens
+
+
     def _prepare_decode(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
@@ -538,6 +588,15 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         padded_batch_size: int,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[int]]:
         assert len(seq_group_metadata_list) > 0
+
+        # --- Special case: embedding task ---
+        if self.scheduler_config.runner_type == "pooling":
+            # Return dummy values with correct shape and type
+            t = torch.ones(padded_batch_size, dtype=torch.float32, device="cpu")
+            p = torch.ones(padded_batch_size, dtype=torch.float32, device="cpu")
+            n = [1 for _ in range(padded_batch_size)]  # one embedding per input
+            return t, p, n
+
         t = []
         p = []
         n = []
@@ -589,10 +648,13 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         del finished_requests_ids  # Unused.
         assert virtual_engine == 0
         assert len(seq_group_metadata_list) > 0
+        logger.info(f"self.scheduler_model_config.task: {self.scheduler_config}")
         # NOTE: We assume that all sequences in the group are all prompts or
         # all decodes.
         is_prompt = seq_group_metadata_list[0].is_prompt
-        if is_prompt:
+        if self.scheduler_config.runner_type == "pooling":
+            inputs = self._prepare_embedding_inputs(seq_group_metadata_list)
+        elif is_prompt:
             inputs = self._prepare_prompt(seq_group_metadata_list)
         else:
             inputs = self._prepare_decode(seq_group_metadata_list)
@@ -606,8 +668,54 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             list(metadata.seq_data.keys())
             for metadata in seq_group_metadata_list
         ]
+        if self.scheduler_config.runner_type == "pooling":
+            logger.info(f"input_lens: {input_lens}")
+            pooling_metadata = self._prepare_pooling(seq_group_metadata_list,
+                                                 input_lens)
+            logger.info(f"pooling_metadata: {pooling_metadata}")
+            model_input = ModelInputForTPUWithPoolingMetadata(input_tokens, input_positions, attn_metadata,
+                                input_lens, t, p, num_samples, n, seq_groups)
+            return dataclasses.replace(model_input,
+                                   virtual_engine=virtual_engine,
+                                   pooling_metadata=pooling_metadata)
+            
+
         return ModelInputForTPU(input_tokens, input_positions, attn_metadata,
                                 input_lens, t, p, num_samples, n, seq_groups)
+
+    def _prepare_pooling(
+        self,
+        seq_group_metadata_list: List[SequenceGroupMetadata],
+        prompt_lens: List[int],
+    ) -> PoolingMetadata:
+        """Prepare PoolingMetadata for the sequence group metadata list."""
+        seq_groups: List[Tuple[List[int], PoolingParams]] = []
+        for i, seq_group_metadata in enumerate(seq_group_metadata_list):
+            seq_ids = list(seq_group_metadata.seq_data.keys())
+            pooling_params = seq_group_metadata.pooling_params
+            assert pooling_params is not None
+            logger.info(f"pooling_params: {pooling_params}")
+            #assert (task := pooling_params.task) is not None, (
+             #   "You did not set `task` in the API")
+
+            #model = cast(VllmModelForPooling, self.model.model)
+            #to_update = model.pooler.get_pooling_updates(task)
+            #to_update.apply(pooling_params)
+
+            seq_groups.append((seq_ids, pooling_params))
+
+        seq_data: Dict[int, SequenceData] = {}
+        for seq_group_metadata in seq_group_metadata_list:
+            seq_data.update(seq_group_metadata.seq_data)
+
+        pooling_metadata = PoolingMetadata(
+            seq_groups=seq_groups,
+            seq_data=seq_data,
+            prompt_lens=prompt_lens,
+        )
+
+        return pooling_metadata
+
 
     def make_model_input_from_broadcasted_tensor_dict(
             self, tensor_dict: Dict[str, Any]) -> ModelInputForTPU:
@@ -623,6 +731,28 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         num_steps: int = 1,
     ) -> List[SamplerOutput]:
+        if self.scheduler_config.runner_type == "pooling":
+            # Move inputs to device
+            token_ids = model_input.token_ids.to(self.device)
+            position_ids = model_input.position_ids.to(self.device)
+            # attn_metadata might be unused or minimal for embedding
+            # Run the model to get embeddings (adjust depending on your model signature)
+            with set_forward_context(model_input.attn_metadata,
+                                    self.vllm_config,
+                                    model_input.virtual_engine):
+                embeddings = self.model(token_ids, position_ids, None, None, None, 1, None)
+            
+            # Return embeddings directly (wrap if needed)
+            # return embeddings
+            logger.info(f"embeddings.shape: {embeddings.shape}")
+            logger.info(f"self.model: {self.model}")
+            logger.info(f"self.model.model: {self.model.model}")
+            logger.info(f"self.model.model.pooler: {self.model.model.pooler}")
+            output = self.model.model.pooler(hidden_states=embeddings,
+                              pooling_metadata=model_input.pooling_metadata)
+            
+            return [output]
+
         assert intermediate_tensors is None
         if not model_input.is_first_multi_step:
             if not model_input.is_last_step:
@@ -793,9 +923,10 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
 
 class ModelWrapper(nn.Module):
 
-    def __init__(self, model: nn.Module):
+    def __init__(self, model: nn.Module, task: str = "generate"):
         super().__init__()
         self.model = model
+        self.task = task  # "generate" or "pooling"
 
     def forward(
         self,
@@ -819,6 +950,16 @@ class ModelWrapper(nn.Module):
             kv_caches: The key and value caches. They can be None during the
                 memory profiling at initialization.
         """
+        if self.task == "pooling":
+            # Simply forward the tokens and positions and return embeddings
+            token_ids = token_ids.to("xla")
+            position_ids = position_ids.to("xla")
+            logger.info(f"token_ids: {token_ids.device} -- {len(token_ids)} -- {token_ids}")
+            logger.info(f"position_ids: {position_ids.device} -- {len(position_ids)} -- {position_ids}")
+            embeddings = self.model(token_ids, position_ids)
+            # You may want to slice embeddings by input_lens if needed
+            return embeddings
+
         batch_size, seq_len = token_ids.shape
         # Calculate the positions to sample from.
         start_indices = torch.arange(
