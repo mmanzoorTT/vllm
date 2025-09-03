@@ -32,7 +32,6 @@ class BlockSpaceManager(ABC):
     @staticmethod
     def get_block_space_manager_class(version: str):
         version = version.lower()
-        logger.info(f"get_block_space_manager_class:version: {version} ")
 
         if version == "selfattn":
             from vllm.core.block_manager import SelfAttnBlockSpaceManager

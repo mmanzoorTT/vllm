@@ -1552,9 +1552,9 @@ class Scheduler:
 
         scheduler_outputs: SchedulerOutputs = self._schedule()
         now = time.time()
-        logger.info(f"scheduler_outputs: {scheduler_outputs}")
+        #logger.info(f"scheduler_outputs: {scheduler_outputs}")
 
-        logger.info(f"self.cache_config.enable_prefix_caching: {self.cache_config.enable_prefix_caching}")
+        #logger.info(f"self.cache_config.enable_prefix_caching: {self.cache_config.enable_prefix_caching}")
         if not self.cache_config.enable_prefix_caching:
             common_computed_block_nums = []
 
@@ -1562,15 +1562,15 @@ class Scheduler:
 
         # Create input data structures.
         seq_group_metadata_list: List[SequenceGroupMetadata] = []
-        logger.info(f"scheduler_outputs.scheduled_seq_groups: {scheduler_outputs.scheduled_seq_groups}")
+        #logger.info(f"scheduler_outputs.scheduled_seq_groups: {scheduler_outputs.scheduled_seq_groups}")
         for i, scheduled_seq_group in enumerate(
                 scheduler_outputs.scheduled_seq_groups):
-            logger.info(f"i:scheduled_seq_group :: {i} -- {scheduled_seq_group}")
+            #logger.info(f"i:scheduled_seq_group :: {i} -- {scheduled_seq_group}")
             seq_group = scheduled_seq_group.seq_group
             token_chunk_size = scheduled_seq_group.token_chunk_size
             seq_group.maybe_set_first_scheduled_time(now)
-            logger.info(f"seq_group: {seq_group}")
-            logger.info(f"token_chunk_size: {token_chunk_size}")
+            #logger.info(f"seq_group: {seq_group}")
+            #logger.info(f"token_chunk_size: {token_chunk_size}")
 
             seq_group_metadata = self._seq_group_metadata_cache[
                 self.cache_id].get_object()
@@ -1595,13 +1595,13 @@ class Scheduler:
                 encoder_seq_data = None
                 cross_block_table = None
 
-            logger.info("loop populating block_tables")
+            #logger.info("loop populating block_tables")
             for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
-                logger.info(f"seq: {seq}")
+                #logger.info(f"seq: {seq}")
                 seq_id = seq.seq_id
                 seq_data[seq_id] = seq.data
                 block_tables[seq_id] = self.block_manager.get_block_table(seq)
-                logger.info(f"block_tables[seq_id]: {block_tables[seq_id]}")
+                #logger.info(f"block_tables[seq_id]: {block_tables[seq_id]}")
                 self.block_manager.access_all_blocks_in_seq(seq, now)
 
             if self.cache_config.enable_prefix_caching:

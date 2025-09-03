@@ -148,8 +148,8 @@ class RMSNorm(CustomOp):
 
         x = x * torch.rsqrt(variance + self.variance_epsilon)
         x = x.to(orig_dtype)
-        logger.info(f"x: {x.device}")
-        logger.info(f"weight: {self.weight.device}")
+        #logger.info(f"x: {x.device}")
+        #logger.info(f"weight: {self.weight.device}")
         if self.has_weight:
             x = x * self.weight
         if residual is None:

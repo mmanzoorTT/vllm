@@ -342,29 +342,29 @@ class Qwen2Model(nn.Module):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, IntermediateTensors]:
-        logger.info(f"model::Qwen2Model")
-        logger.info(f"model::Qwen2Model::input_ids.shape: {input_ids.shape}")
-        logger.info(f"model::Qwen2Model::positions.shape: {positions.shape}")
-        logger.info(f"model::Qwen2Model::inputs: {input_ids}")
-        logger.info(f"model::Qwen2Model::positions: {positions}")
-        if intermediate_tensors is not None:
-            logger.info(f"model::Qwen2Model::intermediate_tensors.shape: {intermediate_tensors.shape}")
-        if inputs_embeds is not None:
-            logger.info(f"model::Qwen2Model::inputs_embeds.shape: {inputs_embeds.shape}")
+        #logger.info(f"model::Qwen2Model")
+        #logger.info(f"model::Qwen2Model::input_ids.shape: {input_ids.shape}")
+        #logger.info(f"model::Qwen2Model::positions.shape: {positions.shape}")
+        #logger.info(f"model::Qwen2Model::inputs: {input_ids}")
+        #logger.info(f"model::Qwen2Model::positions: {positions}")
+        #if intermediate_tensors is not None:
+            #logger.info(f"model::Qwen2Model::intermediate_tensors.shape: {intermediate_tensors.shape}")
+        #if inputs_embeds is not None:
+            #logger.info(f"model::Qwen2Model::inputs_embeds.shape: {inputs_embeds.shape}")
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
-                logger.info("hidden_states-1")
+                #logger.info("hidden_states-1")
                 hidden_states = inputs_embeds
             else:
-                logger.info("hidden_states-2")
+                #logger.info("hidden_states-2")
                 hidden_states = self.get_input_embeddings(input_ids)
             residual = None
         else:
             assert intermediate_tensors is not None
-            logger.info("hidden_states-3")
+            #logger.info("hidden_states-3")
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
-        logger.info(f"hidden_states.shape.start: {hidden_states.shape}")
+        #logger.info(f"hidden_states.shape.start: {hidden_states.shape}")
         for layer in self.layers[self.start_layer:self.end_layer]:
             hidden_states, residual = layer(
                 positions,
@@ -377,9 +377,9 @@ class Qwen2Model(nn.Module):
                 "hidden_states": hidden_states,
                 "residual": residual
             })
-        logger.info(f"hidden_states.shape.after_loop: {hidden_states.shape}")
+        #logger.info(f"hidden_states.shape.after_loop: {hidden_states.shape}")
         hidden_states, _ = self.norm(hidden_states, residual)
-        logger.info(f"model::Qwen2Model::output.shape: {hidden_states.shape}")
+        #logger.info(f"model::Qwen2Model::output.shape: {hidden_states.shape}")
         return hidden_states
 
     def load_weights(self, weights: Iterable[tuple[str,

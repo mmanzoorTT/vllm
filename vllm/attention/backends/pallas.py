@@ -202,6 +202,7 @@ class PallasAttentionBackendImpl(AttentionImpl):
 
         query = query * self.scale
         if attn_metadata is None:
+            #logger.info("Attention layer")
             output = torch.nn.functional.scaled_dot_product_attention(
                 query,
                 key,

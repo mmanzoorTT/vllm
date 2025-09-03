@@ -151,9 +151,9 @@ class RotaryEmbedding(CustomOp):
             positions = positions + offsets
         positions = positions.flatten()
         num_tokens = positions.shape[0]
-        logger.info(f"positions: {positions.device}")
-        logger.info(f"self.cose_sin_cache: {self.cos_sin_cache}")
-        logger.info(f"self.cose_sin_cache: {self.cos_sin_cache.device}")
+        #logger.info(f"positions: {positions.device}")
+        #logger.info(f"self.cose_sin_cache: {self.cos_sin_cache}")
+        #logger.info(f"self.cose_sin_cache: {self.cos_sin_cache.device}")
         self.cos_sin_cache = self.cos_sin_cache.to("xla")
         cos_sin = self.cos_sin_cache.index_select(0, positions)
         cos, sin = cos_sin.chunk(2, dim=-1)

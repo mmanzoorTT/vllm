@@ -36,7 +36,7 @@ class BaseModelLoader(ABC):
     def load_model(self, vllm_config: VllmConfig,
                    model_config: ModelConfig) -> nn.Module:
         """Load a model with the given configurations."""
-        logger.info("base_loader::load_model started")
+        #logger.info("base_loader::load_model started")
         device_config = vllm_config.device_config
         target_device = torch.device(device_config.device)
         with set_default_torch_dtype(model_config.dtype):
@@ -63,5 +63,5 @@ class BaseModelLoader(ABC):
             self.load_weights(model, model_config)
             process_weights_after_loading(model, model_config, target_device)
         temp = model.eval()
-        logger.info("base_loader::load_model completed")
+        #logger.info("base_loader::load_model completed")
         return temp

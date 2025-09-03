@@ -334,7 +334,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     ) -> Tuple[BroadcastableModelInput, WorkerInput, Dict[str, torch.Tensor]]:
         """ Get the driver input and broadcast it to other workers.  """
         assert self.is_driver_worker
-        logger.info(f"execute_model_req: {execute_model_req}")
+        #logger.info(f"execute_model_req: {execute_model_req}")
 
         worker_input: WorkerInput = self.prepare_worker_input(
             execute_model_req=execute_model_req)
@@ -367,10 +367,10 @@ class LocalOrDistributedWorkerBase(WorkerBase):
         """
         Prepare the inputs to ModelRunner and workers.
         """
-        logger.info(f"is_driver_worker: {self.is_driver_worker}")
+        #logger.info(f"is_driver_worker: {self.is_driver_worker}")
         if self.is_driver_worker:
             if execute_model_req is None:
-                logger.info(f"execute_model_req is None")
+                #logger.info(f"execute_model_req is None")
                 if self.do_metadata_broadcast:
                     # This signals that there's no more requests to process for
                     # now. All workers are running infinite loop with

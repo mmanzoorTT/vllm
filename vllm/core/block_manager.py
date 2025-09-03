@@ -285,7 +285,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         del self.cross_block_tables[request_id]
 
     def get_block_table(self, seq: Sequence) -> List[int]:
-        logger.info("block_manager::get_block_table")
+        #logger.info("block_manager::get_block_table")
         block_ids = self.block_tables[seq.seq_id].physical_block_ids
         return block_ids  # type: ignore
 

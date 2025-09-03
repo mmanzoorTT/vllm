@@ -69,7 +69,7 @@ class PlaceholderBlockSpaceManager(BlockSpaceManager):
         return
 
     def get_block_table(self, seq: Sequence) -> List[int]:
-        logger.info("placeholder::get_block_table")
+        # logger.info("placeholder::get_block_table")
         return None  # type: ignore
 
     def get_num_free_gpu_blocks(self) -> int:

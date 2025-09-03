@@ -1277,11 +1277,11 @@ class LLMEngine:
         # These are cached outputs from previous iterations. None if on first
         # iteration
         cached_outputs = self.cached_scheduler_outputs[virtual_engine]
-        logger.info(f"cached_outputs: {cached_outputs}")
+        #logger.info(f"cached_outputs: {cached_outputs}")
         seq_group_metadata_list = cached_outputs.seq_group_metadata_list
         scheduler_outputs = cached_outputs.scheduler_outputs
         allow_async_output_proc = cached_outputs.allow_async_output_proc
-        logger.info(f"seq_group_metadata_list1: {seq_group_metadata_list}")
+        #logger.info(f"seq_group_metadata_list1: {seq_group_metadata_list}")
 
         ctx = self.scheduler_contexts[virtual_engine]
 

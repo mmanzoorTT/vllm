@@ -170,9 +170,9 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             model = get_model(vllm_config=self.vllm_config)
         model = model.eval()
         xm.wait_device_ops()
-        logger.info(f"runner_type: {self.scheduler_config.runner_type}")
-        logger.info(f"model: {model}")
-        logger.info(f"model.pooler: {model.pooler}")
+        #logger.info(f"runner_type: {self.scheduler_config.runner_type}")
+        #logger.info(f"model: {model}")
+        #logger.info(f"model.pooler: {model.pooler}")
         model = ModelWrapper(model, self.scheduler_config.runner_type)
         # self.model = torch.compile(model,
         #                           # backend="openxla",
@@ -648,7 +648,7 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
         del finished_requests_ids  # Unused.
         assert virtual_engine == 0
         assert len(seq_group_metadata_list) > 0
-        logger.info(f"self.scheduler_model_config.task: {self.scheduler_config}")
+        #logger.info(f"self.scheduler_model_config.task: {self.scheduler_config}")
         # NOTE: We assume that all sequences in the group are all prompts or
         # all decodes.
         is_prompt = seq_group_metadata_list[0].is_prompt
@@ -669,10 +669,10 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             for metadata in seq_group_metadata_list
         ]
         if self.scheduler_config.runner_type == "pooling":
-            logger.info(f"input_lens: {input_lens}")
+            #logger.info(f"input_lens: {input_lens}")
             pooling_metadata = self._prepare_pooling(seq_group_metadata_list,
                                                  input_lens)
-            logger.info(f"pooling_metadata: {pooling_metadata}")
+            #logger.info(f"pooling_metadata: {pooling_metadata}")
             model_input = ModelInputForTPUWithPoolingMetadata(input_tokens, input_positions, attn_metadata,
                                 input_lens, t, p, num_samples, n, seq_groups)
             return dataclasses.replace(model_input,
@@ -694,7 +694,7 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             seq_ids = list(seq_group_metadata.seq_data.keys())
             pooling_params = seq_group_metadata.pooling_params
             assert pooling_params is not None
-            logger.info(f"pooling_params: {pooling_params}")
+            #logger.info(f"pooling_params: {pooling_params}")
             #assert (task := pooling_params.task) is not None, (
              #   "You did not set `task` in the API")
 
@@ -744,10 +744,10 @@ class TPUModelRunner(ModelRunnerBase[ModelInputForTPU]):
             
             # Return embeddings directly (wrap if needed)
             # return embeddings
-            logger.info(f"embeddings.shape: {embeddings.shape}")
-            logger.info(f"self.model: {self.model}")
-            logger.info(f"self.model.model: {self.model.model}")
-            logger.info(f"self.model.model.pooler: {self.model.model.pooler}")
+            #logger.info(f"embeddings.shape: {embeddings.shape}")
+            #logger.info(f"self.model: {self.model}")
+            #logger.info(f"self.model.model: {self.model.model}")
+            #logger.info(f"self.model.model.pooler: {self.model.model.pooler}")
             output = self.model.model.pooler(hidden_states=embeddings,
                               pooling_metadata=model_input.pooling_metadata)
             
@@ -954,8 +954,8 @@ class ModelWrapper(nn.Module):
             # Simply forward the tokens and positions and return embeddings
             token_ids = token_ids.to("xla")
             position_ids = position_ids.to("xla")
-            logger.info(f"token_ids: {token_ids.device} -- {len(token_ids)} -- {token_ids}")
-            logger.info(f"position_ids: {position_ids.device} -- {len(position_ids)} -- {position_ids}")
+            #logger.info(f"token_ids: {token_ids.device} -- {len(token_ids)} -- {token_ids}")
+            #logger.info(f"position_ids: {position_ids.device} -- {len(position_ids)} -- {position_ids}")
             embeddings = self.model(token_ids, position_ids)
             # You may want to slice embeddings by input_lens if needed
             return embeddings

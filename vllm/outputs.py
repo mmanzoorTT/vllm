@@ -416,10 +416,10 @@ class EmbeddingOutput:
     @staticmethod
     def from_base(pooling_output: PoolingOutput):
         pooled_data = pooling_output.data
-        logger.info(f"pooled_data: {pooled_data}")
-        logger.info(f"pooled_data_type: {type(pooled_data)}")
-        logger.info(f"pooled_data_shape: {pooled_data.shape}")
-        logger.info(f"pooled_data.ndim: {pooled_data.ndim}")
+        #logger.info(f"pooled_data: {pooled_data}")
+        #logger.info(f"pooled_data_type: {type(pooled_data)}")
+        #logger.info(f"pooled_data_shape: {pooled_data.shape}")
+        #logger.info(f"pooled_data.ndim: {pooled_data.ndim}")
         if pooled_data.ndim != 1:
             raise ValueError("pooled_data should be a 1-D embedding vector")
 

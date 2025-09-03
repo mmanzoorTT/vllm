@@ -140,21 +140,21 @@ class LastPool(SimplePooler):
         hidden_states: Union[torch.Tensor, list[torch.Tensor]],
         pooling_metadata: PoolingMetadata,
     ) -> Union[list[torch.Tensor], torch.Tensor]:
-        logger.info(f"pooler::pooling_metadata: {pooling_metadata}")
+        #logger.info(f"pooler::pooling_metadata: {pooling_metadata}")
         if isinstance(hidden_states, list):
-            logger.info("instance of a list")
+            #logger.info("instance of a list")
             return [h[-1] for h in hidden_states]
 
         prompt_lens = self.get_prompt_lens(hidden_states, pooling_metadata)
 
-        logger.info(f"pooler::prompt_lens: {prompt_lens}")
+        #logger.info(f"pooler::prompt_lens: {prompt_lens}")
         # last_token_flat_indices = torch.cumsum(prompt_lens, dim=0) - 1
         last_token_flat_indices = prompt_lens - 1
         batch_indices = torch.arange(hidden_states.size(0))
-        logger.info(f"pooler::last_token_flat_indices: {last_token_flat_indices}")
-        logger.info(f"output: {hidden_states.shape}")
+        #logger.info(f"pooler::last_token_flat_indices: {last_token_flat_indices}")
+        #logger.info(f"output: {hidden_states.shape}")
         output = hidden_states[batch_indices, last_token_flat_indices]
-        logger.info(f"output: {output.shape}")
+        #logger.info(f"output: {output.shape}")
         return output
     """def extract_states(
         self,
@@ -365,9 +365,9 @@ class Pooler(nn.Module):
         step_tag_id: Optional[int] = None,
         returned_token_ids: Optional[list[int]] = None,
     ) -> SimplePooler:
-        logger.info("pooler.py")
-        logger.info(f"pooler_config: {pooler_config}")
-        logger.info(f"pooler_config.pooling_type: {pooler_config.pooling_type}")
+        #logger.info("pooler.py")
+        #logger.info(f"pooler_config: {pooler_config}")
+        #logger.info(f"pooler_config.pooling_type: {pooler_config.pooling_type}")
         return SimplePooler.from_pooling_type(
             pooling_type=PoolingType[pooler_config.pooling_type]
             if pooler_config.pooling_type is not None else pooling_type,
